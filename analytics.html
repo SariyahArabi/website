@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة التحليل - B2B Market</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+    <style>
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: #1e40af;
+            margin: 0.5rem 0;
+        }
+        .data-table {
+            width: 100%;
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .data-table th,
+        .data-table td {
+            padding: 1rem;
+            text-align: right;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .data-table th {
+            background: #1e40af;
+            color: white;
+            font-weight: 600;
+        }
+        .export-btn {
+            background: #059669;
+            color: white;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 10px;
+            cursor: pointer;
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="nav-bar">
+                <div class="brand">B2B Market - التحليلات</div>
+                <nav class="nav-links">
+                    <a href="index.html">الرئيسية</a>
+                    <a href="analytics.html" class="active">الإحصائيات</a>
+                    <a href="admin.html">لوحة التحكم</a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <main class="container" style="padding: 2rem 0;">
+        <div class="section-header">
+            <h1>لوحة التحليلات والإحصائيات</h1>
+            <p>رصد وتحليل جميع البيانات والطلبات على المنصة</p>
+        </div>
+
+        <div class="analytics-grid">
+            <div class="stat-card">
+                <h3>إجمالي المنتجات</h3>
+                <div class="stat-number" id="totalProducts">0</div>
+                <p class="muted">منتج في المنصة</p>
+            </div>
+            <div class="stat-card">
+                <h3>الطلبات النشطة</h3>
+                <div class="stat-number" id="totalOrders">0</div>
+                <p class="muted">طلب في النظام</p>
+            </div>
+            <div class="stat-card">
+                <h3>إجمالي المبيعات</h3>
+                <div class="stat-number" id="totalSales">$0</div>
+                <p class="muted">قيمة إجمالية</p>
+            </div>
+            <div class="stat-card">
+                <h3>طلبات عروض الأسعار</h3>
+                <div class="stat-number" id="totalRFQs">0</div>
+                <p class="muted">طلب عرض سعر</p>
+            </div>
+        </div>
+
+        <button class="export-btn" onclick="exportAllData()">📥 تصدير جميع البيانات (Excel)</button>
+
+        <div class="grid grid-2">
+            <div class="card">
+                <h3>أحدث الطلبات</h3>
+                <div id="recentOrders" class="data-table-container">
+                    <!-- سيتم تعبئتها بالجافاسكريبت -->
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>طلبات عروض الأسعار</h3>
+                <div id="recentRFQs" class="data-table-container">
+                    <!-- سيتم تعبئتها بالجافاسكريبت -->
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>جميع المنتجات</h3>
+            <div id="allProducts" class="data-table-container">
+                <!-- سيتم تعبئتها بالجافاسكريبت -->
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // تكوين Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyA3LqB8qvRFXMUFWpSLLNYdBNelzikYwCA",
+            authDomain: "arabistore-lad1e.firebaseapp.com",
+            databaseURL: "https://arabistore-lad1e-default-rtdb.firebaseio.com",
+            projectId: "arabistore-lad1e",
+            storageBucket: "arabistore-lad1e.firebasestorage.app",
+            messagingSenderId: "45224994157",
+            appId: "1:45224994157:web:bit9433fd89f829e5d5724"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // دالة لجلب وعرض جميع البيانات
+        async function loadAllData() {
+            try {
+                // جلب المنتجات
+                const productsSnapshot = await database.ref('products').once('value');
+                const products = productsSnapshot.val() || [];
+                displayProducts(products);
+
+                // جلب الطلبات
+                const ordersSnapshot = await database.ref('orders').once('value');
+                const orders = ordersSnapshot.val() || {};
+                displayOrders(orders);
+
+                // جلب طلبات عروض الأسعار
+                const rfqsSnapshot = await database.ref('rfqs').once('value');
+                const rfqs = rfqsSnapshot.val() || {};
+                displayRFQs(rfqs);
+
+                // تحديث الإحصائيات
+                updateStatistics(products, orders, rfqs);
+
+            } catch (error) {
+                console.error('خطأ في جلب البيانات:', error);
+            }
+        }
+
+        function displayProducts(products) {
+            const container = $('#allProducts');
+            if (!container) return;
+
+            const productsArray = Array.isArray(products) ? products : Object.values(products);
+            
+            container.innerHTML = `
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>اسم المنتج</th>
+                            <th>السعر</th>
+                            <th>الحد الأدنى</th>
+                            <th>الفئة</th>
+                            <th>تاريخ الإضافة</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${productsArray.map(product => `
+                            <tr>
+                                <td>${product.name || 'غير محدد'}</td>
+                                <td>$${product.price || 0}</td>
+                                <td>${product.minOrder || 0} قطعة</td>
+                                <td>${product.category || 'عام'}</td>
+                                <td>${new Date(product.timestamp || Date.now()).toLocaleDateString('ar-EG')}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function displayOrders(orders) {
+            const container = $('#recentOrders');
+            if (!container) return;
+
+            const ordersArray = Object.values(orders).slice(-10); // آخر 10 طلبات
+            
+            container.innerHTML = `
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>رقم الطلب</th>
+                            <th>الشركة</th>
+                            <th>المجموع</th>
+                            <th>الحالة</th>
+                            <th>التاريخ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${ordersArray.map(order => `
+                            <tr>
+                                <td>#${order.id || 'غير محدد'}</td>
+                                <td>${order.companyName || 'غير محدد'}</td>
+                                <td>$${order.total || 0}</td>
+                                <td><span style="color: ${getStatusColor(order.status)}">${order.status || 'معلق'}</span></td>
+                                <td>${new Date(order.timestamp || order.date || Date.now()).toLocaleDateString('ar-EG')}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function displayRFQs(rfqs) {
+            const container = $('#recentRFQs');
+            if (!container) return;
+
+            const rfqsArray = Object.values(rfqs).slice(-10); // آخر 10 طلبات
+            
+            container.innerHTML = `
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>نوع المنتج</th>
+                            <th>الكمية</th>
+                            <th>الشركة</th>
+                            <th>الميزانية</th>
+                            <th>التاريخ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rfqsArray.map(rfq => `
+                            <tr>
+                                <td>${rfq.productType || 'غير محدد'}</td>
+                                <td>${rfq.quantity || 0}</td>
+                                <td>${rfq.companyName || 'غير محدد'}</td>
+                                <td>$${rfq.budget || 0}</td>
+                                <td>${new Date(rfq.timestamp || Date.now()).toLocaleDateString('ar-EG')}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function updateStatistics(products, orders, rfqs) {
+            const productsArray = Array.isArray(products) ? products : Object.values(products);
+            const ordersArray = Object.values(orders);
+            const rfqsArray = Object.values(rfqs);
+            
+            const totalSales = ordersArray.reduce((sum, order) => sum + (order.total || 0), 0);
+
+            $('#totalProducts').textContent = productsArray.length;
+            $('#totalOrders').textContent = ordersArray.length;
+            $('#totalSales').textContent = `$${totalSales.toFixed(2)}`;
+            $('#totalRFQs').textContent = rfqsArray.length;
+        }
+
+        function getStatusColor(status) {
+            const colors = {
+                'pending': '#f59e0b',
+                'completed': '#10b981',
+                'cancelled': '#ef4444',
+                'shipped': '#3b82f6'
+            };
+            return colors[status] || '#6b7280';
+        }
+
+        // دالة لتصدير البيانات لـ Excel
+        function exportAllData() {
+            // يمكن إضافة مكتبة مثل SheetJS لتصدير Excel
+            alert('سيتم تطوير خاصية التصدير في النسخة القادمة');
+            
+            // بديل مؤقت: طباعة الصفحة
+            window.print();
+        }
+
+        // التهيئة عند تحميل الصفحة
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAllData();
+            
+            // تحديث البيانات كل 30 ثانية
+            setInterval(loadAllData, 30000);
+        });
+
+        // دالة مساعدة للـ DOM
+        function $(selector) {
+            return document.querySelector(selector);
+        }
+    </script>
+</body>
+</html>
